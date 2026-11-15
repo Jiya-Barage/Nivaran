@@ -1,0 +1,25 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root{--bg:url(/hostel-bg.jpg);color-scheme:light}
+body{background:#F1F5F9;margin:0;font-family:'Plus Jakarta Sans',Inter,system-ui,sans-serif}
+.photo{background:linear-gradient(90deg,rgba(23,37,84,.93),rgba(23,37,84,.6) 60%,rgba(15,118,110,.35)),var(--bg) center/cover}
+.photo-login{background:linear-gradient(90deg,rgba(23,37,84,.88) 0%,rgba(23,37,84,.5) 42%,rgba(23,37,84,.04) 100%),var(--bg) 70% center/cover}
+@media(max-width:1023px){.photo-login{background:linear-gradient(rgba(23,37,84,.7),rgba(23,37,84,.7)),var(--bg) 60% center/cover}}
+@keyframes pop{0%{transform:scale(.4);opacity:0}70%{transform:scale(1.1)}100%{transform:scale(1);opacity:1}}.pop{animation:pop .5s ease-out}
+@keyframes slide{from{transform:translateX(30px);opacity:0}to{transform:none;opacity:1}}.slide{animation:slide .25s ease-out}
+@media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+
+@layer components{
+.card{@apply bg-white rounded-xl border border-slate-200 shadow-sm}
+.btn{@apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition disabled:opacity-40 disabled:cursor-not-allowed focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal}
+.bp{@apply btn bg-navy text-white hover:bg-blue-900}
+.bt{@apply btn bg-teal text-white hover:bg-teal-800}
+.bg{@apply btn border border-slate-300 bg-white text-slate-700 hover:bg-slate-50}
+.bd{@apply btn bg-red-600 text-white hover:bg-red-700}
+.ba{@apply btn bg-amber text-navy hover:bg-amber-400}
+.inp{@apply w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 focus:border-teal focus:outline-none focus:ring-2 focus:ring-teal/25}
+.th{@apply px-4 py-3 text-left text-xs font-semibold text-slate-500 whitespace-nowrap bg-slate-50}
+.td{@apply px-4 py-3 text-sm text-slate-700 whitespace-nowrap}
+}

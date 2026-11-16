@@ -1,18 +1,20 @@
+import {CATS,HOS,STAFFL,STU,WARD} from '../data/mockData.js';
+
 const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
 const LOCAL_USER_KEY = 'hostelcare-demo-users';
 const LOCAL_SESSION_KEY = 'hostelcare-demo-session';
 const LOCAL_DATA_KEY = 'hostelcare-demo-data';
-const DEMO_HOSTELS = ['Sahyadri', 'Godavari', 'Krishna', 'Bhima'];
+const DEMO_HOSTELS = HOS;
 const DEMO_USERS = import.meta.env.DEV ? [
   {
     userId: 'demo-student',
     username: 'student',
     email: 'student@demo.hostelcare.test',
-    name: 'Aarav Kulkarni',
-    phone: '9821000001',
-    prn: '22110451',
-    hostel: 'Sahyadri',
-    room: '204',
+    name: STU[0].name,
+    phone: STU[0].phone,
+    prn: STU[0].prn,
+    hostel: STU[0].hostel,
+    room: STU[0].room,
     role: 'student',
     password: 'StudentDemo123!',
   },
@@ -126,8 +128,8 @@ function fallbackLogin({ identifier, password, role }) {
     email: matchedUser.email,
     phone: matchedUser.phone,
     prn: matchedUser.prn,
-    hostel: matchedUser.hostel || (matchedUser.role === 'student' ? 'Sahyadri' : undefined),
-    room: matchedUser.room || (matchedUser.role === 'student' ? '204' : undefined),
+    hostel: matchedUser.hostel || (matchedUser.role === 'student' ? HOS[0] : undefined),
+    room: matchedUser.room || (matchedUser.role === 'student' ? STU[0].room : undefined),
     role: matchedUser.role,
     title: matchedUser.role === 'warden' ? 'Warden' : matchedUser.role === 'admin' ? 'Admin' : 'Student',
     isActive: true,
@@ -203,7 +205,7 @@ function fallbackRequest(endpoint, options = {}) {
     return {
       hostels: DEMO_HOSTELS.map((name, index) => ({ id: index + 1, name })),
       rooms: DEMO_HOSTELS.flatMap((_, index) =>
-        ['101', '204'].map((roomNumber) => ({
+        (index === 0 ? ['B-101', 'B-205'] : ['G-204', 'G-406']).map((roomNumber) => ({
           roomId: `${index + 1}-${roomNumber}`,
           hostelId: index + 1,
           roomNumber,
@@ -233,8 +235,43 @@ function fallbackRequest(endpoint, options = {}) {
     return { user };
   }
 
+  if (endpoint === '/auth/profile' && method === 'PATCH') {
+    if (!sessionUser) throw new Error('Authentication required.');
+    const user = { ...sessionUser, ...body };
+    writeSession(user);
+    return { user };
+  }
+
   if (endpoint === '/complaints' && method === 'GET') {
     return { complaints: readLocalData().complaints };
+  }
+
+  if (endpoint === '/complaints/options') {
+    return { categories: CATS, staff: STAFFL };
+  }
+
+  if (endpoint === '/complaints/directory') {
+    const hostels = HOS.map((name, index) => ({
+      id: index + 1,
+      name,
+      totalRooms: [120, 96, 110, 84][index],
+      capacity: [500, 400, 450, 350][index],
+      occupiedBeds: [470, 352, 410, 276][index],
+      warden: WARD[name],
+    }));
+    return {
+      hostels,
+      students: STU.map((student) => ({
+        ...student,
+        academicYear: student.year,
+      })),
+      wardens: [...new Set([...Object.values(WARD), 'Dr. Meera Deshpande'])].map((name) => ({
+        name,
+        hostels: name === 'Dr. Meera Deshpande'
+          ? 'All hostels (development demo)'
+          : HOS.filter((hostel) => WARD[hostel] === name).join(' & '),
+      })),
+    };
   }
 
   if (endpoint === '/complaints' && method === 'POST') {
@@ -250,7 +287,7 @@ function fallbackRequest(endpoint, options = {}) {
       studentUserId: sessionUser?.userId,
       prn: sessionUser?.prn || body.prn || '',
       status: 'Pending',
-      warden: 'Dr. Meera Deshpande',
+      warden: WARD[body.hostel] || sessionUser?.name || 'Unassigned',
       staff: '',
       date: new Date().toISOString(),
       t: { 0: new Date().toISOString() },
@@ -302,7 +339,7 @@ function fallbackRequest(endpoint, options = {}) {
 function canUseLocalFallback(endpoint, method, status) {
   if (!import.meta.env.DEV) return false;
   if (endpoint === '/auth/login' && status === 401) return true;
-  if (hasActiveLocalSession() && (endpoint === '/auth/me' || endpoint === '/auth/logout' || endpoint.startsWith('/complaints'))) {
+  if (hasActiveLocalSession() && (endpoint === '/auth/me' || endpoint === '/auth/profile' || endpoint === '/auth/logout' || endpoint.startsWith('/complaints'))) {
     return status === 401 || endpoint === '/auth/logout';
   }
   return false;
@@ -357,7 +394,10 @@ export const api = {
   getRegistrationOptions: () => request('/auth/registration-options'),
   register: (payload) => request('/auth/register', { method: 'POST', body: payload }),
   getCurrentUser: () => request('/auth/me'),
+  updateProfile: (profile) => request('/auth/profile', { method: 'PATCH', body: profile }),
   getComplaints: async () => (await request('/complaints')).complaints,
+  getComplaintOptions: () => request('/complaints/options'),
+  getDirectory: () => request('/complaints/directory'),
   createComplaint: async (complaint) =>
     (await request('/complaints', { method: 'POST', body: complaint })).complaint,
   updateComplaint: async (id, complaint) =>

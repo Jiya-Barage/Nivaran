@@ -28,10 +28,15 @@ These files are ignored by Git and should contain your local database and JWT se
 - Registration and login use the backend MySQL user table and bcrypt password hashes.
 - Session cookies are used for persistence across browser reloads.
 - In development, the backend creates the student-profile and complaint tables and seeds the demo Admin/Warden accounts if their usernames, emails, and phone numbers are unused.
+- On startup, existing rows in the legacy `complaint` table are copied into `hostelcare_complaint` with stable `LEGACY-<id>` identifiers. The source rows are not changed, and repeat starts do not create duplicates.
 - Student complaints, status changes, assignments, ratings, and feedback are stored in MySQL and are visible to the Warden/Admin accounts.
+- Student complaint locations come from the student's assigned database room; category and maintenance-staff choices reflect recorded database values.
+- Admin hostel, student, warden, and maintenance directories are loaded from MySQL. Warden accounts with assigned hostels only see those hostels' complaints and students; the unassigned development demo Warden can see all hostels.
+- Profile email and phone changes are saved to the account in MySQL.
+- Signed-in dashboards refresh complaint data every 10 seconds and when the browser tab becomes active.
 - If the backend is unreachable, the frontend has a development-only local demo mode. Local-demo registrations and complaints stay in that browser and are not written to MySQL.
 - If MySQL returns an application/database error, the frontend shows the error rather than reporting a local write as successful.
-- The single Warden account can review complaints from every hostel.
+- The development demo Warden account is unassigned and can review complaints from every hostel. Actual Warden accounts are scoped to their assigned hostels.
 - Seed/mock complaints and local-demo updates are saved in the browser and synchronized between open tabs on the same origin. They do not persist to MySQL or sync between different browsers/devices.
 - Production does not use local demo fallback; configure the database and JWT settings before running it.
 

@@ -1,6 +1,8 @@
 const express = require('express');
 const {
   list,
+  getOptions,
+  getDirectory,
   create,
   update,
   remove,
@@ -11,6 +13,8 @@ const { requireAuth } = require('../middleware/authMiddleware');
 const router = express.Router();
 
 router.use(requireAuth);
+router.get('/options', getOptions);
+router.get('/directory', getDirectory);
 router.get('/', list);
 router.post('/', create);
 router.patch('/:id', update);

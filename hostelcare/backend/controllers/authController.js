@@ -29,6 +29,7 @@ function toAuthUser(row, profile = {}) {
     prn: profile.prn,
     hostel: profile.hostel,
     room: profile.room_number,
+    hostels: profile.hostels || [],
     role: role === 'student' ? 'student' : role === 'warden' ? 'warden' : 'admin',
     title: role === 'student' ? 'Student' : role === 'warden' ? 'Warden' : 'Admin',
     isActive: Boolean(row.is_active),
@@ -75,10 +76,28 @@ async function ensureSchema() {
 
 async function getStudentProfile(userId, connection = pool) {
   const [rows] = await connection.query(
-    'SELECT prn, hostel, room_number FROM hostelcare_student_profile WHERE user_id = ? LIMIT 1',
+    `SELECT
+       COALESCE(NULLIF(student.prn, ''), profile.prn) AS prn,
+       COALESCE(NULLIF(hostel.hostel_name, ''), profile.hostel) AS hostel,
+       COALESCE(NULLIF(room.room_number, ''), profile.room_number) AS room_number
+     FROM user_account account
+     LEFT JOIN hostelcare_student_profile profile ON profile.user_id = account.user_id
+     LEFT JOIN student ON student.user_id = account.user_id
+     LEFT JOIN room ON room.room_id = student.room_id
+     LEFT JOIN hostel ON hostel.hostel_id = room.hostel_id
+     WHERE account.user_id = ?
+     LIMIT 1`,
     [userId]
   );
   return rows[0] || {};
+}
+
+async function getWardenHostels(userId, connection = pool) {
+  const [rows] = await connection.query(
+    'SELECT hostel_name FROM hostel WHERE warden_user_id = ? ORDER BY hostel_name',
+    [userId]
+  );
+  return rows.map((row) => row.hostel_name);
 }
 
 async function seedDemoStaffAccounts() {
@@ -120,31 +139,21 @@ async function getUserByIdentifier(identifier) {
 }
 
 async function ensureRoomExists({ roomId, hostelId, roomNumber, connection }) {
-  if (roomId) {
-    const [rows] = await connection.query('SELECT room_id FROM room WHERE room_id = ? LIMIT 1', [roomId]);
-    if (!rows.length) {
-      const error = new Error('Selected room does not exist.');
-      error.statusCode = 400;
-      throw error;
-    }
-    return Number(rows[0].room_id);
-  }
-
-  if (!hostelId || !roomNumber) {
+  if ((!roomId && (!hostelId || !roomNumber))) {
     const error = new Error('Hostel and room are required for student registration.');
     error.statusCode = 400;
     throw error;
   }
 
   const [rows] = await connection.query(
-    `SELECT room_id
+    `SELECT room.room_id, room.hostel_id, room.room_number, hostel.hostel_name
      FROM room
-     WHERE hostel_id = ?
-       AND room_number = ?
+     JOIN hostel ON hostel.hostel_id = room.hostel_id
+     WHERE ${roomId ? 'room.room_id = ?' : 'room.hostel_id = ? AND room.room_number = ?'}
        AND room_status IN ('Available', 'Partially Occupied')
        AND occupied_beds < capacity
      LIMIT 1`,
-    [Number(hostelId), String(roomNumber)]
+    roomId ? [Number(roomId)] : [Number(hostelId), String(roomNumber)]
   );
 
   if (!rows.length) {
@@ -153,7 +162,12 @@ async function ensureRoomExists({ roomId, hostelId, roomNumber, connection }) {
     throw error;
   }
 
-  return Number(rows[0].room_id);
+  return {
+    roomId: Number(rows[0].room_id),
+    hostelId: Number(rows[0].hostel_id),
+    hostel: rows[0].hostel_name,
+    roomNumber: rows[0].room_number,
+  };
 }
 
 async function getRegistrationOptions(req, res) {
@@ -249,7 +263,12 @@ async function register(req, res) {
         throw error;
       }
 
-      const room_id = await ensureRoomExists({ roomId, hostelId, roomNumber, connection });
+      const selectedRoom = await ensureRoomExists({ roomId, hostelId, roomNumber, connection });
+      if (hostel !== selectedRoom.hostel) {
+        const error = new Error('Selected hostel does not match the selected room.');
+        error.statusCode = 400;
+        throw error;
+      }
       const nextUserId = await getNextId(connection, 'user_account', 'user_id');
       const nextStudentId = await getNextId(connection, 'student', 'student_id');
       const passwordHash = await bcrypt.hash(password, 12);
@@ -282,7 +301,7 @@ async function register(req, res) {
           academicYear,
           department,
           Number(admissionDate.slice(0, 4)) || new Date().getFullYear(),
-          room_id,
+          selectedRoom.roomId,
           emergencyContactName,
           emergencyContactRelation,
           emergencyContactNo,
@@ -295,7 +314,7 @@ async function register(req, res) {
       );
       await connection.query(
         'INSERT INTO hostelcare_student_profile (user_id, prn, hostel, room_number) VALUES (?, ?, ?, ?)',
-        [nextUserId, prn, hostel, roomNumber]
+        [nextUserId, prn, selectedRoom.hostel, selectedRoom.roomNumber]
       );
 
       await connection.commit();
@@ -352,6 +371,9 @@ async function login(req, res) {
     }
 
     const profile = await getStudentProfile(user.user_id);
+    if (roleFromDb === 'warden') {
+      profile.hostels = await getWardenHostels(user.user_id);
+    }
     const token = jwt.sign(
       {
         userId: user.user_id,
@@ -361,6 +383,7 @@ async function login(req, res) {
         prn: profile.prn,
         hostel: profile.hostel,
         room: profile.room_number,
+        hostels: profile.hostels || [],
       },
       JWT_SECRET,
       { expiresIn: JWT_TTL }
@@ -395,9 +418,61 @@ async function me(req, res) {
     }
 
     const profile = await getStudentProfile(userId);
+    if (String(rows[0].role || '').toLowerCase() === 'warden') {
+      profile.hostels = await getWardenHostels(userId);
+    }
     return res.status(200).json({ user: toAuthUser(rows[0], profile) });
   } catch (error) {
     return res.status(500).json({ message: error.message || 'Could not load profile.' });
+  }
+}
+
+async function updateProfile(req, res) {
+  const userId = Number(req.user?.userId);
+  const email = sanitizeText(req.body?.email).toLowerCase();
+  const phone = sanitizeText(req.body?.phone).replace(/\s+/g, '');
+
+  if (!userId) return res.status(401).json({ message: 'Your session is invalid. Please sign in again.' });
+  if (!isEmailValid(email)) return res.status(400).json({ message: 'Enter a valid email address.' });
+  if (!isPhoneValid(phone)) return res.status(400).json({ message: 'Enter a valid phone number.' });
+
+  const connection = await pool.getConnection();
+  try {
+    await connection.beginTransaction();
+    const [duplicates] = await connection.query(
+      'SELECT user_id FROM user_account WHERE user_id <> ? AND (LOWER(email) = LOWER(?) OR phone = ?) LIMIT 1',
+      [userId, email, phone]
+    );
+    if (duplicates.length) {
+      const error = new Error('That email or phone number is already in use.');
+      error.statusCode = 409;
+      throw error;
+    }
+
+    await connection.query(
+      'UPDATE user_account SET email = ?, phone = ? WHERE user_id = ?',
+      [email, phone, userId]
+    );
+    if (String(req.user.role || '').toLowerCase() === 'student') {
+      await connection.query(
+        'UPDATE student SET email = ?, phone = ? WHERE user_id = ?',
+        [email, phone, userId]
+      );
+    }
+    await connection.commit();
+
+    const [users] = await pool.query('SELECT * FROM user_account WHERE user_id = ? LIMIT 1', [userId]);
+    if (!users.length) return res.status(404).json({ message: 'User not found.' });
+    const profile = await getStudentProfile(userId);
+    if (String(users[0].role || '').toLowerCase() === 'warden') {
+      profile.hostels = await getWardenHostels(userId);
+    }
+    return res.status(200).json({ user: toAuthUser(users[0], profile) });
+  } catch (error) {
+    await connection.rollback();
+    return res.status(error.statusCode || 500).json({ message: error.message || 'Could not update profile.' });
+  } finally {
+    connection.release();
   }
 }
 
@@ -406,4 +481,4 @@ async function logout(req, res) {
   return res.status(200).json({ message: 'Logged out successfully.' });
 }
 
-module.exports = { register, login, me, logout, getRegistrationOptions, ensureSchema, seedDemoStaffAccounts };
+module.exports = { register, login, me, updateProfile, logout, getRegistrationOptions, ensureSchema, seedDemoStaffAccounts };

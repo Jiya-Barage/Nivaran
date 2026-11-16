@@ -7,7 +7,7 @@ const { pool } = require('./config/db');
 const authRoutes = require('./routes/authRoutes');
 const complaintRoutes = require('./routes/complaintRoutes');
 const { ensureSchema, seedDemoStaffAccounts } = require('./controllers/authController');
-const { ensureComplaintSchema } = require('./controllers/complaintController');
+const { ensureComplaintSchema, importLegacyComplaints } = require('./controllers/complaintController');
 
 const app = express();
 const PORT = Number(process.env.PORT || 5000);
@@ -41,6 +41,10 @@ async function startServer() {
   try {
     await ensureSchema();
     await ensureComplaintSchema();
+    const importedComplaints = await importLegacyComplaints();
+    if (importedComplaints) {
+      console.log(`Imported ${importedComplaints} legacy complaints into HostelCare.`);
+    }
     if (process.env.NODE_ENV === 'development' || !process.env.NODE_ENV) {
       await seedDemoStaffAccounts();
     }

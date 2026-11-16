@@ -1,0 +1,2 @@
+ALTER TABLE user_account
+  ADD COLUMN IF NOT EXISTS password_hash VARCHAR(255) NULL;

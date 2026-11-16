@@ -127,7 +127,7 @@ async function create(req, res) {
 
     const now = new Date().toISOString();
     const timeline = { 0: now };
-    const temporaryId = `TEMP-${randomUUID()}`;
+    const temporaryId = `TMP-${randomUUID().replace(/-/g, '').slice(0, 20)}`;
     const connection = await pool.getConnection();
     try {
       await connection.beginTransaction();

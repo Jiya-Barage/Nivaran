@@ -137,17 +137,48 @@ async function ensureRoomExists({ roomId, hostelId, roomNumber, connection }) {
   }
 
   const [rows] = await connection.query(
-    'SELECT room_id FROM room WHERE hostel_id = ? AND room_number = ? LIMIT 1',
+    `SELECT room_id
+     FROM room
+     WHERE hostel_id = ?
+       AND room_number = ?
+       AND room_status IN ('Available', 'Partially Occupied')
+       AND occupied_beds < capacity
+     LIMIT 1`,
     [Number(hostelId), String(roomNumber)]
   );
 
   if (!rows.length) {
-    const error = new Error('The selected hostel/room combination does not exist.');
+    const error = new Error('The selected hostel/room combination is not available.');
     error.statusCode = 400;
     throw error;
   }
 
   return Number(rows[0].room_id);
+}
+
+async function getRegistrationOptions(req, res) {
+  try {
+    const [hostels] = await pool.query(`
+      SELECT DISTINCT h.hostel_id AS id, h.hostel_name AS name
+      FROM hostel h
+      JOIN room r ON r.hostel_id = h.hostel_id
+      WHERE r.room_status IN ('Available', 'Partially Occupied')
+        AND r.occupied_beds < r.capacity
+      ORDER BY h.hostel_name
+    `);
+    const [rooms] = await pool.query(`
+      SELECT r.room_id AS roomId, r.hostel_id AS hostelId, r.room_number AS roomNumber
+      FROM room r
+      WHERE r.room_status IN ('Available', 'Partially Occupied')
+        AND r.occupied_beds < r.capacity
+      ORDER BY r.hostel_id, r.room_number
+    `);
+
+    return res.status(200).json({ hostels, rooms });
+  } catch (error) {
+    console.error('Could not load student registration options:', error);
+    return res.status(500).json({ message: 'Could not load available hostel rooms.' });
+  }
 }
 
 async function register(req, res) {
@@ -375,4 +406,4 @@ async function logout(req, res) {
   return res.status(200).json({ message: 'Logged out successfully.' });
 }
 
-module.exports = { register, login, me, logout, ensureSchema, seedDemoStaffAccounts };
+module.exports = { register, login, me, logout, getRegistrationOptions, ensureSchema, seedDemoStaffAccounts };

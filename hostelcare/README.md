@@ -36,4 +36,4 @@ These files are ignored by Git and should contain your local database and JWT se
 - Production does not use local demo fallback; configure the database and JWT settings before running it.
 
 ## Database note
-The app expects an existing MySQL schema named hostel_complaint_db with the legacy `user_account`, `student`, and `room` tables. The backend automatically adds `password_hash` to `user_account` when missing and creates `hostelcare_student_profile` and `hostelcare_complaint`. Public student registration also needs valid hostel and room records in the legacy tables. Configure `DB_HOST`, `DB_USER`, `DB_PASSWORD`, and `DB_NAME` in `backend/.env`; never commit that file.
+The app expects an existing MySQL schema named hostel_complaint_db with the legacy `user_account`, `student`, `hostel`, and `room` tables. The backend automatically adds `password_hash` to `user_account` when missing and creates `hostelcare_student_profile` and `hostelcare_complaint`. Student registration loads hostels and rooms with available capacity from those legacy tables. Configure `DB_HOST`, `DB_USER`, `DB_PASSWORD`, and `DB_NAME` in `backend/.env`; never commit that file.

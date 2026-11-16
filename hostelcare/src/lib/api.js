@@ -2,6 +2,7 @@ const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
 const LOCAL_USER_KEY = 'hostelcare-demo-users';
 const LOCAL_SESSION_KEY = 'hostelcare-demo-session';
 const LOCAL_DATA_KEY = 'hostelcare-demo-data';
+const DEMO_HOSTELS = ['Sahyadri', 'Godavari', 'Krishna', 'Bhima'];
 const DEMO_USERS = import.meta.env.DEV ? [
   {
     userId: 'demo-student',
@@ -198,6 +199,19 @@ function fallbackRequest(endpoint, options = {}) {
   const { method = 'GET', body } = options;
   const sessionUser = readSession();
 
+  if (endpoint === '/auth/registration-options') {
+    return {
+      hostels: DEMO_HOSTELS.map((name, index) => ({ id: index + 1, name })),
+      rooms: DEMO_HOSTELS.flatMap((_, index) =>
+        ['101', '204'].map((roomNumber) => ({
+          roomId: `${index + 1}-${roomNumber}`,
+          hostelId: index + 1,
+          roomNumber,
+        }))
+      ),
+    };
+  }
+
   if (endpoint === '/auth/login') {
     return fallbackLogin(body || {});
   }
@@ -328,7 +342,7 @@ async function request(endpoint, options = {}) {
   } catch (error) {
     const message = String(error?.message || '').toLowerCase();
     if (message.includes('failed to fetch') || message.includes('network') || message.includes('load failed')) {
-      if (import.meta.env.DEV && (endpoint === '/auth/login' || endpoint === '/auth/register' || hasActiveLocalSession())) {
+      if (import.meta.env.DEV && (endpoint === '/auth/login' || endpoint === '/auth/register' || endpoint === '/auth/registration-options' || hasActiveLocalSession())) {
         return fallbackRequest(endpoint, { method, body });
       }
     }
@@ -340,6 +354,7 @@ async function request(endpoint, options = {}) {
 export const api = {
   login: ({ identifier, password, role }) =>
     request('/auth/login', { method: 'POST', body: { identifier, password, role } }),
+  getRegistrationOptions: () => request('/auth/registration-options'),
   register: (payload) => request('/auth/register', { method: 'POST', body: payload }),
   getCurrentUser: () => request('/auth/me'),
   getComplaints: async () => (await request('/complaints')).complaints,
